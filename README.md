@@ -1,70 +1,88 @@
 # astanova/picocloj
 
-FIXME: my new application.
+Minimum Viable PicoClaw in Clojure
+
+A tiny, single-file CLI AI assistant inspired by https://github.com/sipeed/picoclaw (the ultra-light Go agent).
+
+## Features (MVP)
+
+- `onboard` → creates ~/.picoclaw/config.edn with your API key
+- `agent` → interactive chat loop (ReAct-style memory via conversation history)
+- Uses any OpenAI-compatible endpoint (OpenAI, Groq, DeepSeek, VolcEngine, etc.)
+- < 200 LOC, runs with plain `clj`
+- No tool calling in this MVP (add later via LLM JSON mode + function defs)
 
 ## Installation
 
-Download from https://github.com/astanova/picocloj
+Clone the repository and ensure you have Clojure installed.
 
 ## Usage
 
-FIXME: explanation
+### One-time setup
 
-Run the project directly, via `:exec-fn`:
+```bash
+clojure -M:run-m onboard
+```
 
-    $ clojure -X:run-x
-    Hello, Clojure!
+This creates `~/.picoclaw/config.edn`. Edit it with your real API key and model configuration.
 
-Run the project, overriding the name to be greeted:
+### Interactive chat
 
-    $ clojure -X:run-x :name '"Someone"'
-    Hello, Someone!
+```bash
+clojure -M:run-m agent
+```
 
-Run the project directly, via `:main-opts` (`-m astanova.picocloj`):
+Type your messages, and PicoClaw will respond. Type `quit` or `exit` to end the session.
 
-    $ clojure -M:run-m
-    Hello, World!
+### Direct greeting (exec function)
 
-Run the project, overriding the name to be greeted:
+```bash
+clojure -X:run-x
+# Hello, World! This is PicoClaw Clojure edition.
 
-    $ clojure -M:run-m Via-Main
-    Hello, Via-Main!
+clojure -X:run-x :name '"Alice"'
+# Hello, Alice! This is PicoClaw Clojure edition.
+```
 
-Run the project's tests (they'll fail until you edit them):
+### Configuration
 
-    $ clojure -T:build test
+Edit `~/.picoclaw/config.edn` to set your API key, model, and endpoint.
 
-Run the project's CI pipeline and build an uberjar (this will fail until you edit the tests to pass):
+Example config:
 
-    $ clojure -T:build ci
+```clojure
+{:agents {:defaults {:model-name "gpt-4o-mini"
+                     :temperature 0.7
+                     :max-tokens 4096}}
+ :model-list [{:name "default"
+               :base-url "https://api.openai.com/v1"
+               :api-key "sk-your-real-key-here"
+               :model "gpt-4o-mini"}]}
+```
 
-This will produce an updated `pom.xml` file with synchronized dependencies inside the `META-INF`
-directory inside `target/classes` and the uberjar in `target`. You can update the version (and SCM tag)
-information in generated `pom.xml` by updating `build.clj`.
+## Building
 
-If you don't want the `pom.xml` file in your project, you can remove it. The `ci` task will
-still generate a minimal `pom.xml` as part of the `uber` task, unless you remove `version`
-from `build.clj`.
+To build an uberjar:
 
-Run that uberjar:
+```bash
+clojure -T:build ci
+```
 
-    $ java -jar target/net.clojars.astanova/picocloj-0.1.0-SNAPSHOT.jar
+This creates `target/net.clojars.astanova/picocloj-0.1.0-SNAPSHOT.jar`.
 
-## Options
+Run the jar:
 
-FIXME: listing of options this app accepts.
+```bash
+java -jar target/net.clojars.astanova/picocloj-0.1.0-SNAPSHOT.jar onboard
+```
 
-## Examples
+## Development
 
-...
+Run tests:
 
-### Bugs
-
-...
-
-### Any Other Sections
-### That You Think
-### Might be Useful
+```bash
+clojure -T:build test
+```
 
 ## License
 
