@@ -11,7 +11,7 @@
   [data]
   (println (str "Hello, " (or (:name data) "World") "! This is PicoClaw Clojure edition.")))
 
-(def config-dir (str (System/getProperty "user.home") "/.picoclaw"))
+(def config-dir (str (System/getProperty "user.home") "/.picocloj"))
 (def config-path (str config-dir "/config.edn"))
 
 (def default-config
