@@ -282,7 +282,7 @@ follow its specific instructions while still being helpful to the user.")
                                                   [response active-skill-id])]
 
           (println "🦐 PicoClaw:" (:content final-response))
-          (recur (conj new-history final-response) updated-skill-id))))
+          (recur (conj new-history final-response) updated-skill-id))))))
 
 (def cli-options
   [["-h" "--help"]])

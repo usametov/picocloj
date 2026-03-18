@@ -23,13 +23,23 @@
 
 (def skills-registry (atom {})) ; id -> Skill
 
+(defn read-content
+  "Read content from a File, URL string, file path string, or content string."
+  [src]
+  (cond
+    (instance? java.io.File src) (slurp src)
+    (string? src) (if (or (str/starts-with? src "http://")
+                          (str/starts-with? src "https://")
+                          (.exists (io/file src)))
+                    (slurp src)
+                    src)
+    :else (slurp src))) ; assume URI or something slurpable
+
 (defn parse-skill-md
   "Parse SKILL.md (string or File/URL). Returns Skill or nil."
   [md-content-or-path]
   (try
-    (let [content (if (string? md-content-or-path)
-                    md-content-or-path
-                    (slurp md-content-or-path))
+    (let [content (read-content md-content-or-path)
           ;; Simple frontmatter splitter (robust enough for most skills)
           [_ front body] (re-matches #"(?s)^---\s*(.*?)\s*---\s*(.*)" content)
           meta (when front (yaml/parse-string front))]
