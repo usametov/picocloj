@@ -1,6 +1,6 @@
 # astanova/picocloj
 
-Minimum Viable PicoClaw in Clojure
+Minimum Viable PicoClaw version in Clojure
 
 A tiny, single-file CLI AI assistant inspired by https://github.com/sipeed/picoclaw (the ultra-light Go agent).
 
