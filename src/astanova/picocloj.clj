@@ -5,6 +5,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.set :as set]
+            [clojure.java.shell :as shell]
             [astanova.skills :as skills])
   (:gen-class))
 
@@ -24,8 +25,19 @@
                  :base-url "https://api.openai.com/v1"
                  :api-key "sk-XXXXXXXXXXXXXXXX"
                  :model "gpt-4o-mini"}]
-   :skills {:enabled ["example"]
+   :skills {:enabled ["example", "shell-helper"]
             :skills-dir (str config-dir "/skills")}})
+
+(defn create-skill-if-missing
+  "Create a skill file if it doesn't exist. Returns true if created."
+  [skills-dir skill-id skill-content]
+  (let [skill-dir (io/file skills-dir skill-id)
+        skill-file (io/file skill-dir "SKILL.md")]
+    (when-not (.exists skill-dir) (.mkdirs skill-dir))
+    (when-not (.exists skill-file)
+      (spit skill-file skill-content)
+      (println "📁 Skill" skill-id "copied to" (.getPath skill-file))
+      true)))
 
 (defn ensure-config []
   (let [dir (io/file config-dir)]
@@ -33,11 +45,7 @@
   (let [skills-dir (io/file (str config-dir "/skills"))]
     (when-not (.exists skills-dir) (.mkdirs skills-dir))
     ;; Copy example skill if it doesn't exist
-    (let [example-skill-dir (io/file skills-dir "example")
-          example-skill-file (io/file example-skill-dir "SKILL.md")]
-      (when-not (.exists example-skill-dir) (.mkdirs example-skill-dir))
-      (when-not (.exists example-skill-file)
-        (spit example-skill-file "---
+    (create-skill-if-missing skills-dir "example" "---
 id: example
 name: Example Assistant
 description: An example skill that makes PicoClaw more helpful and enthusiastic
@@ -66,7 +74,54 @@ You are now in **example mode**. This is a demonstration of how skills work in P
 **You**: \"Absolutely! 💻 I'd love to help with coding. What language or problem are you working on?\"
 
 Remember: Stay positive, helpful, and engage with the user's questions enthusiastically!")
-        (println "📁 Example skill copied to" (.getPath example-skill-file)))))
+
+    ;; Copy shell-helper skill if it doesn't exist
+    (create-skill-if-missing skills-dir "shell-helper" "---
+id: shell-helper
+name: Shell Helper
+description: A skill that allows running shell commands for system tasks
+allowed-tools: [shell_command]
+version: 1.0.0
+author: PicoClaw Team
+---
+
+You are now in **shell helper mode**. This skill enables you to execute shell commands to help with system tasks, file operations, git commands, and other command-line utilities.
+
+## Guidelines
+- Use shell commands only when necessary to accomplish the user's request
+- Always explain what command you're about to run and why
+- Review the command output and present it concisely to the user
+- Be careful with destructive commands (rm, mv, etc.) – consider adding safety checks or asking for confirmation
+- Prefer built-in tools over shell commands when available
+
+## Example Interactions
+
+**User**: \"List files in the current directory\"
+**You**: \"I'll list the files using the `ls` command.\"
+*[uses shell_command with command \"ls\" and args [\"-la\"]]*
+\"The directory contains: ...\"
+
+**User**: \"Check the git status\"
+**You**: \"Let me check git status for you.\"
+*[uses shell_command with command \"git\" and args [\"status\"]]*
+\"Git status shows: ...\"
+
+**User**: \"Create a new directory called 'test'\"
+**You**: \"I'll create a directory named 'test' using `mkdir`.\"
+*[uses shell_command with command \"mkdir\" and args [\"test\"]]*
+\"Directory 'test' created successfully.\"
+
+**User**: \"What's my current working directory?\"
+**You**: \"I'll run `pwd` to find the current directory.\"
+*[uses shell_command with command \"pwd\"]*
+\"Your current directory is: ...\"
+
+## Safety Notes
+- Avoid running commands with sudo or elevated privileges unless explicitly requested
+- Be mindful of command injection risks (the tool already splits arguments properly)
+- Use the `dir` parameter to change working directory when needed
+
+Remember: You have access to the `shell_command` tool while this skill is active."))
   (when-not (.exists (io/file config-path))
     (spit config-path (pr-str default-config))
     (println "✅ Config created at" config-path)
@@ -118,25 +173,88 @@ Remember: Stay positive, helpful, and engage with the user's questions enthusias
 
 (register-tool!
  "simple_calc"
- "Evaluate a simple arithmetic expression"
+ "Evaluate a simple arithmetic expression (sum of numbers separated by spaces)"
  {:type "object"
-  :properties {:expression {:type "string" :description "Simple arithmetic expression"}}
+  :properties {:expression {:type "string" :description "Simple arithmetic expression (numbers separated by spaces, e.g., '1 2 3')"}}
   :required [:expression]}
  (fn [args]
    (try
-     (let [result (eval (read-string (str "(+ " (:expression args) ")")))]
-       {:result result :expression (:expression args)})
+     (let [expr (:expression args)
+           numbers (->> (str/split expr #"\s+")
+                        (map #(Double/parseDouble %)))
+           result (apply + numbers)]
+       {:result result :expression expr})
      (catch Exception e
        {:error (.getMessage e) :expression (:expression args)}))))
 
-(defn filter-tools-for-skill [skill-id]
-  "Filter tools based on skill's allowed-tools list."
+(register-tool!
+ "shell_command"
+ "Execute a shell command and return the output"
+ {:type "object"
+  :properties {:command {:type "string" :description "Command to execute (e.g., 'ls' or 'git status')"}
+               :args {:type "array" :description "Array of argument strings" :items {:type "string"}}
+               :dir {:type "string" :description "Working directory (optional)"}}
+  :required [:command]}
+ (fn [args-map]
+   (try
+     (let [{:keys [command dir] :or {dir nil} args-vec :args} args-map
+           cmd-parts (if (seq args-vec)
+                       (cons command args-vec)
+                       (str/split command #"\s+"))
+           ;; Ensure command is not empty
+           _ (when (empty? cmd-parts)
+               (throw (ex-info "Command cannot be empty" {})))
+           ;; Build arguments for shell/sh
+           sh-args (if dir
+                     (concat cmd-parts [:dir dir])
+                     cmd-parts)
+           result (apply shell/sh sh-args)]
+       {:exit (:exit result)
+        :out (:out result)
+        :err (:err result)})
+     (catch Exception e
+       {:error (.getMessage e) :command (:command args-map)}))))
+
+(defn filter-tools-for-skill
+  "Filter tools based on skill's allowed-tools list.
+   Can be called with skill-id (string) or skill-id and skill map."
+  ([skill-id]
+   (if-let [skill (skills/get-skill skill-id)]
+     (filter-tools-for-skill skill-id skill)
+     @tools-registry))
+  ([skill-id skill]
+   (let [allowed (:allowed-tools skill)]
+     (if (empty? allowed)
+       @tools-registry  ; If no restrictions, all tools allowed
+       (select-keys @tools-registry allowed)))))
+
+(defn build-tools-for-skill-impl [skill-id]
+  "Build tools map for a skill, including custom tools if implementations exist."
   (if-let [skill (skills/get-skill skill-id)]
-    (let [allowed (:allowed-tools skill)]
-      (if (empty? allowed)
-        @tools-registry  ; If no restrictions, all tools allowed
-        (select-keys @tools-registry allowed)))
-    @tools-registry))  ; If no skill active, all tools allowed
+    (let [filtered-tools (filter-tools-for-skill skill-id skill)
+          custom-tools (:custom-tools skill)]
+      (if (empty? custom-tools)
+        filtered-tools
+        ;; Merge custom tool schemas with implementations from registry
+        (reduce (fn [tools-map custom-tool]
+                  (let [tool-name (:name custom-tool)
+                        existing-tool (get @tools-registry tool-name)]
+                    (if existing-tool
+                      ;; Use custom schema but keep implementation from registry
+                      (assoc tools-map tool-name
+                             (merge existing-tool
+                                    {:description (or (:description custom-tool)
+                                                      (:description existing-tool ""))
+                                     :schema (:schema custom-tool)}))
+                      ;; No implementation, warn and skip
+                      (do
+                        (println (str "⚠️  Custom tool '" tool-name "' has no implementation, skipping"))
+                        tools-map))))
+                filtered-tools
+                custom-tools)))
+    @tools-registry))
+
+(def build-tools-for-skill (memoize build-tools-for-skill-impl))
 
 (def base-system-prompt
   "You are PicoClaw — a tiny, fast, helpful AI assistant inspired by the $10-hardware Go version.
@@ -238,7 +356,7 @@ follow its specific instructions while still being helpful to the user.")
                               active-skill-id)
 
               ;; Filter tools based on active skill
-              filtered-tools (filter-tools-for-skill active-skill-id)
+              filtered-tools (build-tools-for-skill active-skill-id)
               openai-tools (when (seq filtered-tools)
                              (tools-to-openai-format filtered-tools))
 

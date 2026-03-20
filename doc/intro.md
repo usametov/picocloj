@@ -20,6 +20,16 @@ The core components are:
 3. **Interactive loop**: Simple read-eval-print loop with conversation history
 4. **Command-line interface**: Two subcommands: `onboard` and `agent`
 
+## Available Commands
+
+  - `/skills` lists available skills
+  - `/example` activates the example skill
+  - `/clear` deactivates the current skill
+  - Skills load automatically from the configured directory
+  - The `invoke_skill` tool can activate skills programmatically
+
+For detailed information about creating and using skills, see [Skills Documentation](skills.md).
+
 ## Future Directions
 
 - Tool calling via LLM JSON mode

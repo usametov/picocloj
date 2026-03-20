@@ -10,6 +10,7 @@
    prompt     ; full markdown body (the injection)
    metadata   ; parsed frontmatter map
    allowed-tools ; set of strings from frontmatter (for filtering)
+   custom-tools ; vector of custom tool definitions from frontmatter
    supporting ; map of filename -> content (if folder)
    ])
 
@@ -53,6 +54,7 @@
            (str/trim body)
            meta
            (set (:allowed-tools meta))
+           (or (:custom-tools meta) [])
            {}))))
     (catch Exception e
       (println "Error parsing skill:" (.getMessage e))
